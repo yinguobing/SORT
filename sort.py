@@ -1,6 +1,7 @@
 import numpy as np
 from filterpy.kalman import KalmanFilter
 from scipy.optimize import linear_sum_assignment
+import cv2
 
 
 def linear_assignment(cost_matrix):
@@ -38,8 +39,8 @@ def convert_bbox_to_z(bbox):
     x = bbox[0] + w/2.
     y = bbox[1] + h/2.
     s = w * h  # scale is just area
-    r = w / float(h)
-    return np.array([x, y, s, r]).reshape((4, 1))
+    r = w / (float(h))
+    return np.array([x, y, s, r], dtype=np.float32).reshape((4, 1))
 
 
 def convert_x_to_bbox(x, score=None):
@@ -48,7 +49,7 @@ def convert_x_to_bbox(x, score=None):
       [x1,y1,x2,y2] where x1,y1 is the top left and x2,y2 is the bottom right
     """
     w = np.sqrt(x[2] * x[3])
-    h = x[2] / w
+    h = x[2] / (w)
     if(score == None):
         return np.array([x[0]-w/2., x[1]-h/2., x[0]+w/2., x[1]+h/2.]).reshape((1, 4))
     else:
@@ -63,22 +64,48 @@ class KalmanBoxTracker(object):
 
     def __init__(self, bbox):
         """
-        Initialises a tracker using initial bounding box.
+        Initializes a tracker using initial bounding box.
         """
         # define constant velocity model
-        self.kf = KalmanFilter(dim_x=7, dim_z=4)
-        self.kf.F = np.array([[1, 0, 0, 0, 1, 0, 0], [0, 1, 0, 0, 0, 1, 0], [0, 0, 1, 0, 0, 0, 1], [
-                             0, 0, 0, 1, 0, 0, 0],  [0, 0, 0, 0, 1, 0, 0], [0, 0, 0, 0, 0, 1, 0], [0, 0, 0, 0, 0, 0, 1]])
-        self.kf.H = np.array([[1, 0, 0, 0, 0, 0, 0], [0, 1, 0, 0, 0, 0, 0], [
-                             0, 0, 1, 0, 0, 0, 0], [0, 0, 0, 1, 0, 0, 0]])
+        # self.kf = KalmanFilter(dim_x=7, dim_z=4)
+        self.kf = cv2.KalmanFilter(7, 4)
 
-        self.kf.R[2:, 2:] *= 10.
-        self.kf.P[4:, 4:] *= 1000.  # give high uncertainty to the unobservable initial velocities
-        self.kf.P *= 10.
-        self.kf.Q[-1, -1] *= 0.01
-        self.kf.Q[4:, 4:] *= 0.01
+        # self.kf.F = np.array([[1, 0, 0, 0, 1, 0, 0], [0, 1, 0, 0, 0, 1, 0], [0, 0, 1, 0, 0, 0, 1], [
+        #                      0, 0, 0, 1, 0, 0, 0],  [0, 0, 0, 0, 1, 0, 0], [0, 0, 0, 0, 0, 1, 0], [0, 0, 0, 0, 0, 0, 1]])
+        self.kf.transitionMatrix = np.array(
+            [[1, 0, 0, 0, 1, 0, 0],
+             [0, 1, 0, 0, 0, 1, 0],
+             [0, 0, 1, 0, 0, 0, 1],
+             [0, 0, 0, 1, 0, 0, 0],
+             [0, 0, 0, 0, 1, 0, 0],
+             [0, 0, 0, 0, 0, 1, 0],
+             [0, 0, 0, 0, 0, 0, 1]],
+            dtype=np.float32
+        )
 
-        self.kf.x[:4] = convert_bbox_to_z(bbox)
+        # self.kf.H = np.array([[1, 0, 0, 0, 0, 0, 0], [0, 1, 0, 0, 0, 0, 0], [
+        #                      0, 0, 1, 0, 0, 0, 0], [0, 0, 0, 1, 0, 0, 0]])
+        self.kf.measurementMatrix = np.array(
+            [[1, 0, 0, 0, 0, 0, 0],
+             [0, 1, 0, 0, 0, 0, 0],
+             [0, 0, 1, 0, 0, 0, 0],
+             [0, 0, 0, 1, 0, 0, 0]],
+            dtype=np.float32
+        )
+
+        # self.kf.R[2:, 2:] *= 10.
+        self.kf.measurementNoiseCov = np.eye(4, dtype=np.float32) * 10
+
+        # self.kf.Q[-1, -1] *= 0.01
+        # self.kf.Q[4:, 4:] *= 0.01
+        self.kf.processNoiseCov = np.eye(7, dtype=np.float32) * 0.01
+
+        # self.kf.P[4:, 4:] *= 1000.  # give high uncertainty to the unobservable initial velocities
+        # self.kf.P *= 10.
+        self.kf.errorCovPre = np.eye(7, dtype=np.float32) * 10
+        self.kf.errorCovPre[4:, 4:] *= 1000
+
+        self.measurement = convert_bbox_to_z(bbox)
         self.time_since_update = 0
         self.id = KalmanBoxTracker.count
         KalmanBoxTracker.count += 1
@@ -95,27 +122,27 @@ class KalmanBoxTracker(object):
         self.history = []
         self.hits += 1
         self.hit_streak += 1
-        self.kf.update(convert_bbox_to_z(bbox))
+        self.kf.correct(convert_bbox_to_z(bbox))
 
     def predict(self):
         """
         Advances the state vector and returns the predicted bounding box estimate.
         """
-        if((self.kf.x[6]+self.kf.x[2]) <= 0):
-            self.kf.x[6] *= 0.0
-        self.kf.predict()
+        # if((self.kf.x[6]+self.kf.x[2]) <= 0):
+        #     self.kf.x[6] *= 0.0
+        r = self.kf.predict().flatten()
         self.age += 1
         if(self.time_since_update > 0):
             self.hit_streak = 0
         self.time_since_update += 1
-        self.history.append(convert_x_to_bbox(self.kf.x))
+        self.history.append(convert_x_to_bbox(r))
         return self.history[-1]
 
     def get_state(self):
         """
         Returns the current bounding box estimate.
         """
-        return convert_x_to_bbox(self.kf.x)
+        return convert_x_to_bbox(self.kf.statePost)
 
 
 def associate_detections_to_trackers(detections, trackers, iou_threshold=0.3):
