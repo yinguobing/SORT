@@ -94,11 +94,14 @@ class KalmanBoxTracker(object):
         )
 
         # self.kf.R[2:, 2:] *= 10.
-        self.kf.measurementNoiseCov = np.eye(4, dtype=np.float32) * 10
+        self.kf.measurementNoiseCov = np.eye(4, dtype=np.float32)
+        self.kf.measurementNoiseCov[2:, 2:] *= 10.0
 
         # self.kf.Q[-1, -1] *= 0.01
         # self.kf.Q[4:, 4:] *= 0.01
-        self.kf.processNoiseCov = np.eye(7, dtype=np.float32) * 0.01
+        self.kf.processNoiseCov = np.eye(7, dtype=np.float32)
+        self.kf.processNoiseCov[-1, -1] *= 0.01
+        self.kf.processNoiseCov[4:, 4:] *= 0.01
 
         # self.kf.P[4:, 4:] *= 1000.  # give high uncertainty to the unobservable initial velocities
         # self.kf.P *= 10.
