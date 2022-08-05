@@ -131,9 +131,9 @@ class KalmanBoxTracker(object):
         """
         Advances the state vector and returns the predicted bounding box estimate.
         """
-        # if((self.kf.x[6]+self.kf.x[2]) <= 0):
-        #     self.kf.x[6] *= 0.0
-        r = self.kf.predict().flatten()
+        if((self.kf.statePost[6]+self.kf.statePost[2]) <= 0):
+            self.kf.statePost[6] *= 0.0
+        r = self.kf.predict()
         self.age += 1
         if(self.time_since_update > 0):
             self.hit_streak = 0
