@@ -108,7 +108,9 @@ class KalmanBoxTracker(object):
         self.kf.errorCovPre = np.eye(7, dtype=np.float32) * 10
         self.kf.errorCovPre[4:, 4:] *= 1000
 
-        self.measurement = convert_bbox_to_z(bbox)
+        # Init the filter with first measurement value
+        self.kf.correct(convert_bbox_to_z(bbox))
+
         self.time_since_update = 0
         self.id = KalmanBoxTracker.count
         KalmanBoxTracker.count += 1
@@ -131,14 +133,14 @@ class KalmanBoxTracker(object):
         """
         Advances the state vector and returns the predicted bounding box estimate.
         """
-        if((self.kf.statePost[6]+self.kf.statePost[2]) <= 0):
-            self.kf.statePost[6] *= 0.0
-        r = self.kf.predict()
+        if((self.kf.statePre[6]+self.kf.statePre[2]) <= 0):
+            self.kf.statePre[6] *= 0.0
+        prediction = self.kf.predict()
         self.age += 1
         if(self.time_since_update > 0):
             self.hit_streak = 0
         self.time_since_update += 1
-        self.history.append(convert_x_to_bbox(r))
+        self.history.append(convert_x_to_bbox(prediction))
         return self.history[-1]
 
     def get_state(self):
