@@ -65,12 +65,8 @@ class KalmanBoxTracker(object):
         """
         Initializes a tracker using initial bounding box.
         """
-        # define constant velocity model
-        # self.kf = KalmanFilter(dim_x=7, dim_z=4)
         self.kf = cv2.KalmanFilter(7, 4)
 
-        # self.kf.F = np.array([[1, 0, 0, 0, 1, 0, 0], [0, 1, 0, 0, 0, 1, 0], [0, 0, 1, 0, 0, 0, 1], [
-        #                      0, 0, 0, 1, 0, 0, 0],  [0, 0, 0, 0, 1, 0, 0], [0, 0, 0, 0, 0, 1, 0], [0, 0, 0, 0, 0, 0, 1]])
         self.kf.transitionMatrix = np.array(
             [[1, 0, 0, 0, 1, 0, 0],
              [0, 1, 0, 0, 0, 1, 0],
@@ -82,8 +78,6 @@ class KalmanBoxTracker(object):
             dtype=np.float32
         )
 
-        # self.kf.H = np.array([[1, 0, 0, 0, 0, 0, 0], [0, 1, 0, 0, 0, 0, 0], [
-        #                      0, 0, 1, 0, 0, 0, 0], [0, 0, 0, 1, 0, 0, 0]])
         self.kf.measurementMatrix = np.array(
             [[1, 0, 0, 0, 0, 0, 0],
              [0, 1, 0, 0, 0, 0, 0],
@@ -92,18 +86,14 @@ class KalmanBoxTracker(object):
             dtype=np.float32
         )
 
-        # self.kf.R[2:, 2:] *= 10.
         self.kf.measurementNoiseCov = np.eye(4, dtype=np.float32)
         self.kf.measurementNoiseCov[2:, 2:] *= 10.0
 
-        # self.kf.Q[-1, -1] *= 0.01
-        # self.kf.Q[4:, 4:] *= 0.01
         self.kf.processNoiseCov = np.eye(7, dtype=np.float32)
         self.kf.processNoiseCov[-1, -1] *= 0.01
         self.kf.processNoiseCov[4:, 4:] *= 0.01
 
-        # self.kf.P[4:, 4:] *= 1000.  # give high uncertainty to the unobservable initial velocities
-        # self.kf.P *= 10.
+        # give high uncertainty to the unobservable initial velocities
         self.kf.errorCovPre = np.eye(7, dtype=np.float32) * 10
         self.kf.errorCovPre[4:, 4:] *= 1000
 
